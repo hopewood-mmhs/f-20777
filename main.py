@@ -1,156 +1,183 @@
 import streamlit as st
-import requests
 import pandas as pd
+import requests
 from datetime import datetime, timedelta
 import pytz
 
 # 페이지 기본 설정
-st.set_page_config(page_title="날짜별 박스오피스", layout="wide")
+st.set_page_config(page_title="1년치 박스오피스 분석기", layout="wide")
 
-# 1. 한국 시간 기준 '어제' Date 객체 구하기 함수
-def get_yesterday_date():
-    kst_tz = pytz.timezone('Asia/Seoul')
-    now_kst = datetime.now(kst_tz)
+# -------------------------------------------------------------------
+# [1] API 키 불러오기 및 기본 처리
+# Streamlit secrets에서 KOBIS_KEY를 가져옵니다.
+# -------------------------------------------------------------------
+try:
+    API_KEY = st.secrets["KOBIS_KEY"]
+except Exception:
+    API_KEY = None
+
+st.title("🎬 KOBIS 1년치 박스오피스 데이터 분석")
+
+# API 키가 등록되지 않았을 때 사용자에게 안내 문구를 띄웁니다.
+if not API_KEY:
+    st.error("⚠️ API 키를 넣어주세요. (.streamlit/secrets.toml 파일에 KOBIS_KEY를 설정해야 합니다.)")
+    st.stop()
+
+
+# -------------------------------------------------------------------
+# [2] 1년치 박스오피스 데이터 수집 함수 (캐싱 적용)
+# @st.cache_data를 사용하여 이미 가져온 데이터는 재요청 없이 기억해둡니다.
+# -------------------------------------------------------------------
+@st.cache_data(ttl=86400 * 30) # 한 번 가져온 데이터는 한 달간 재사용합니다.
+def fetch_one_year_boxoffice(api_key):
+    # 서버 시계와 상관없이 한국 표준시(KST) 기준으로 날짜를 계산합니다.
+    tz_kst = pytz.timezone('Asia/Seoul')
+    now_kst = datetime.now(tz_kst)
+    
+    # '어제' 날짜를 구합니다 (오늘 데이터는 집계 전이므로 어제부터 시작)
     yesterday = now_kst - timedelta(days=1)
-    return yesterday.date()
-
-# 2. KOBIS API 호출 및 캐싱 함수
-# 입력받은 target_date(YYYYMMDD) 기준으로 1시간 캐싱
-@st.cache_data(ttl=3600)
-def fetch_box_office_data(target_date_str):
-    api_key = st.secrets.get("KOBIS_KEY")
     
-    if not api_key:
-        return None, "Secrets에 'KOBIS_KEY'가 설정되지 않았습니다. Secrets 설정을 확인해 주세요."
-
-    url = "https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
-    params = {
-        "key": api_key,
-        "targetDt": target_date_str
-    }
+    # 어제부터 과거 365일간의 날짜 목록(YYYYMMDD 형태)을 생성합니다.
+    date_list = [(yesterday - timedelta(days=i)).strftime('%Y%m%d') for i in range(365)]
     
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+    all_data = [] # 모든 일자별 영화 데이터를 담을 리스트
+    failed_dates = [] # 데이터를 불러오지 못한 날짜를 담을 리스트
+    
+    # 화면에 수집 진행 상황을 보여주는 바(Bar)와 텍스트를 준비합니다.
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    total_days = len(date_list)
+    
+    base_url = "https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
+    
+    # 365일 데이터를 하루씩 반복해서 가져옵니다.
+    for index, target_dt in enumerate(date_list):
+        # 진행 상황 안내 문구 업데이트
+        status_text.text(f"⏳ 데이터 수집 중... ({index + 1}/{total_days} 일) - 기준일자: {target_dt}")
+        progress_bar.progress((index + 1) / total_days)
         
-        # API 오류 응답 처리
-        if "faultInfo" in data:
-            error_msg = data["faultInfo"].get("message", "알 수 없는 오류가 발생했습니다.")
-            return None, f"KOBIS API 오류가 발생했습니다: {error_msg} (인증키를 확인해 주세요)"
-        
-        box_office_result = data.get("boxOfficeResult", {})
-        daily_list = box_office_result.get("dailyBoxOfficeList", [])
-        
-        # 목록이 비어있는 경우
-        if not daily_list:
-            return None, "선택하신 날짜는 아직 집계 전이거나 데이터가 없습니다."
+        try:
+            params = {
+                'key': api_key,
+                'targetDt': target_dt
+            }
+            # API 요청 보내기 (타임아웃 10초 설정)
+            response = requests.get(base_url, params=params, timeout=10)
             
-        return daily_list, None
+            # 네트워크 요청 실패 시 해당 날짜 건너뛰기
+            if response.status_code != 200:
+                failed_dates.append(target_dt)
+                continue
+            
+            data = response.json()
+            
+            # API 내부 에러(faultInfo)가 포함되어 있는 경우 건너뛰기
+            if 'faultInfo' in data:
+                failed_dates.append(target_dt)
+                continue
+                
+            box_office_result = data.get('boxOfficeResult', {})
+            daily_list = box_office_result.get('dailyBoxOfficeList', [])
+            
+            # 영화 목록이 비어있는 경우 건너뛰기
+            if not daily_list:
+                failed_dates.append(target_dt)
+                continue
+            
+            # 추출한 각 영화 정보에 '조회 날짜' 정보를 추가하여 저장
+            for movie in daily_list:
+                movie['targetDt'] = target_dt
+                all_data.append(movie)
+                
+        except Exception:
+            # 에러 발생 시 해당 날짜를 failure에 기록하고 계속 진행
+            failed_dates.append(target_dt)
+            continue
 
-    except requests.exceptions.RequestException as e:
-        return None, f"서버 통신에 실패했습니다. 네트워크 상태를 확인해 주세요. (상세: {e})"
-
-# --- 메인 UI 영역 ---
-
-st.title("🎬 날짜별 박스오피스 조회")
-
-# 3. 날짜 선택기 (Date Input)
-yesterday_date = get_yesterday_date()
-
-# 사이드바 또는 메인 화면 상단에 날짜 선택 달력 배치
-selected_date = st.date_input(
-    "조회할 날짜를 선택하세요 (최대: 어제)",
-    value=yesterday_date,
-    max_value=yesterday_date,  # 오늘 이후 날짜는 선택 불가
-    min_value=datetime(2004, 1, 1).date() # KOBIS 데이터 제공 시작 시점 근처
-)
-
-# 선택한 날짜를 YYYYMMDD 문자열로 변환
-target_date_str = selected_date.strftime('%Y%m%d')
-formatted_date = selected_date.strftime('%Y년 %m월 %d일')
-
-st.caption(f"선택된 조회 날짜: **{formatted_date}**")
-
-# API 데이터 불러오기
-raw_data, error_message = fetch_box_office_data(target_date_str)
-
-# 오류 메시지 또는 집계 전 안내
-if error_message:
-    st.warning(error_message)
-    st.info("""
-    💡 **참고 사항:**
-    - KOBIS 박스오피스는 보통 다음 날 새벽~아침 사이에 집계가 완료됩니다.
-    - 입력 키(`KOBIS_KEY`)가 정상인지 확인해 주세요.
-    """)
-else:
-    # 4. 데이터 전처리
-    df = pd.DataFrame(raw_data)
+    # 작업 완료 후 진행 표시줄 숨기기
+    progress_bar.empty()
+    status_text.empty()
     
-    # 숫자로 사용할 컬럼들 정수형 변환
-    numeric_columns = ['rank', 'rankInten', 'audiCnt', 'audiAcc', 'scrnCnt']
-    for col in numeric_columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-        
-    # 순위 기준으로 정렬
-    df = df.sort_values(by='rank', ascending=True)
-
-    # 5. 순위 변동(rankInten) 및 100만 관객 이모지 가공 함수 적용
-    def format_rank_change(val):
-        if val > 0:
-            return f"🔺 +{val}"  # 상승 (빨간 위 화살표)
-        elif val < 0:
-            return f"🔹 {val}"   # 하락 (파란 아래 화살표)
-        else:
-            return "-"           # 변동 없음
-
-    df['rankChange'] = df['rankInten'].apply(format_rank_change)
-
-    # 누적관객 100만 명 이상일 경우 영화명에 🏆 이모지 추가
-    df['displayMovieNm'] = df.apply(
-        lambda row: f"🏆 {row['movieNm']}" if row['audiAcc'] >= 1_000_000 else row['movieNm'],
-        axis=1
-    )
-
-    # 6. 1위 영화 주요 지표 카드
-    top_1 = df.iloc[0]
-    st.subheader(f"🥇 1위: {top_1['displayMovieNm']}")
+    # 수집된 데이터를 판다스 데이터프레임으로 변환
+    df = pd.DataFrame(all_data)
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("일별 관객수", f"{top_1['audiCnt']:,} 명")
-    col2.metric("누적 관객수", f"{top_1['audiAcc']:,} 명")
-    col3.metric("스크린수", f"{top_1['scrnCnt']:,} 개")
+    # ---------------------------------------------------------------
+    # [3] 데이터 전처리 (숫자형으로 변환)
+    # API에서 문자열로 넘어온 숫자 데이터를 실제 숫자형으로 바꿔줍니다.
+    # ---------------------------------------------------------------
+    if not df.empty:
+        numeric_columns = ['rank', 'rankInten', 'audiCnt', 'audiAcc', 'scrnCnt', 'showCnt']
+        for col in numeric_columns:
+            if col in df.columns:
+                # 숫자로 변환할 수 없는 값은 NaN(빈값) 처리 후 0으로 채움
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                
+    return df, failed_dates
 
-    st.divider()
 
-    # 7. 관객수 상위 5개 영화 막대그래프
-    st.subheader("📊 관객수 Top 5 영화")
-    top5_df = df.head(5)
+# -------------------------------------------------------------------
+# [4] 화면 구성 및 데이터 로드 실행
+# -------------------------------------------------------------------
+st.subheader("📊 데이터 수집 및 조회")
+
+# 데이터 불러오기 버튼
+if st.button("🚀 1년치 데이터 수집 시작"):
+    df, failed_dates = fetch_one_year_boxoffice(API_KEY)
     
-    st.bar_chart(
-        data=top5_df,
-        x='movieNm',  # 그래프 축에는 트로피 없는 깔끔한 원래 이름 사용
-        y='audiCnt',
-        use_container_width=True
-    )
+    # 가져온 데이터프레임을 세션 상태에 저장하여 화면에 유지
+    st.session_state['df'] = df
+    st.session_state['failed_dates'] = failed_dates
 
-    st.divider()
-
-    # 8. 전체 박스오피스 순위표 표시
-    st.subheader("📋 전체 순위 목록")
+# 수집 완료 후 결과 표시
+if 'df' in st.session_state and st.session_state['df'] is not None:
+    df = st.session_state['df']
+    failed_dates = st.session_state['failed_dates']
     
-    # 표에 보여줄 컬럼 선택 및 순서 정리
-    display_df = df[['rank', 'rankChange', 'displayMovieNm', 'openDt', 'audiCnt', 'audiAcc', 'scrnCnt']].copy()
-    display_df.columns = ['순위', '전일대비', '영화명', '개봉일', '당일 관객수', '누적 관객수', '스크린수']
+    st.success(f"데이터 수집이 완료되었습니다! (총 {len(df):,}개 행 수집 완료)")
+    
+    # 누락/실패된 날짜가 있다면 한국어로 안내
+    if failed_dates:
+        st.warning(f"⚠️ 총 {len(failed_dates)}개의 날짜 데이터를 가져오지 못했습니다. (실패 일자 수: {len(failed_dates)}일)")
+    else:
+        st.info("🎉 모든 날짜(365일)의 데이터를 성공적으로 가져왔습니다!")
 
-    # 표 출력
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "당일 관객수": st.column_config.NumberColumn(format="%d명"),
-            "누적 관객수": st.column_config.NumberColumn(format="%d명"),
-            "스크린수": st.column_config.NumberColumn(format="%d개"),
-        }
-    )
+    # ---------------------------------------------------------------
+    # [5] 팝업(다이얼로그) 형태의 데이터프레임 확인 버튼
+    # ---------------------------------------------------------------
+    @st.dialog("📋 1년치 전체 박스오피스 데이터", width="large")
+    def show_data_dialog():
+        st.write("문자열 숫자가 모두 실제 숫자형(Int/Float)으로 정제된 데이터입니다.")
+        st.dataframe(df, use_container_width=True)
+
+    if st.button("🔍 데이터프레임 새 창(팝업)으로 보기"):
+        show_data_dialog()
+
+# -------------------------------------------------------------------
+# [6] 그래프 자리(틀) 미리 만들어두기 (그래프 1 ~ 그래프 5)
+# -------------------------------------------------------------------
+st.write("---")
+st.subheader("📈 시각화 영역 (시각화 준비 공간)")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    with st.container(border=True):
+        st.markdown("### 📌 그래프 1")
+        st.info("여기에 첫 번째 그래프가 들어갈 자리입니다.")
+
+    with st.container(border=True):
+        st.markdown("### 📌 그래프 3")
+        st.info("여기에 세 번째 그래프가 들어갈 자리입니다.")
+
+    with st.container(border=True):
+        st.markdown("### 📌 그래프 5")
+        st.info("여기에 다섯 번째 그래프가 들어갈 자리입니다.")
+
+with col2:
+    with st.container(border=True):
+        st.markdown("### 📌 그래프 2")
+        st.info("여기에 두 번째 그래프가 들어갈 자리입니다.")
+
+    with st.container(border=True):
+        st.markdown("### 📌 그래프 4")
+        st.info("여기에 네 번째 그래프가 들어갈 자리입니다.")
