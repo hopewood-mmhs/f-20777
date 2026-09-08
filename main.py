@@ -143,14 +143,11 @@ try:
     st.header("3. 날짜별 박스오피스 Top 10 총 관객 수 추이 (영역 그래프)")
     st.caption("매일 박스오피스 Top 10 영화들의 일관객 합계를 계산하여 전체 영화 시장의 규모 변화를 시각화합니다.")
 
-    # 일별 Top 10 관객수 합계 계산
     daily_total = df.groupby('날짜')['일관객'].sum().reset_index().sort_values('날짜')
 
     if not daily_total.empty:
-        # 관객수가 가장 컸던 상위 3일 추출
         top3_days = daily_total.nlargest(3, '일관객')
 
-        # Area 그래프 생성
         fig3 = px.area(
             daily_total,
             x='날짜',
@@ -165,7 +162,6 @@ try:
             hovertemplate="<b>날짜:</b> %{x|%Y-%m-%d}<br><b>Top 10 총 관객:</b> %{y:,}명<extra></extra>"
         )
 
-        # 상위 3일 붉은 다이아몬드 마커 및 날짜/관객수 텍스트 표시
         for idx, row in top3_days.iterrows():
             date_str = row['날짜'].strftime('%Y-%m-%d')
             val = row['일관객']
@@ -192,15 +188,65 @@ try:
         st.plotly_chart(fig3, use_container_width=True)
 
         top3_info_str = ", ".join([f"{r['날짜'].strftime('%Y-%m-%d')} ({r['일관객']:,}명)" for _, r in top3_days.iterrows()])
-        st.info(f"💡 **이 그래프로 알 수 있는 것:** 연중 극장가 전체 관객 수의 계절성(명절, 연휴, 성수기)을 파악할 수 있으며, 관객 수가 가장 많았던 상위 3일({top3_info_str})을 확인할 수 있습니다.")
+        st.info(f"💡 **이 그래프로 알 수 있는 것:** 연중 극장가 전체 관객 수의 계절성(명절, 연휴, 여름/겨울 성수기)을 파악할 수 있으며, 관객 수가 가장 많았던 3일({top3_info_str})을 확인할 수 있습니다.")
     else:
         st.warning("영역 그래프 데이터를 생성할 수 없습니다.")
 
     # ---------------------------------------------------------
-    # 구역 4: (추가 예정 구역 예시)
+    # 구역 4: 기간 내 일관객 합계 Top 10 영화 (가로 막대그래프)
     # ---------------------------------------------------------
     st.divider()
-    st.header("4. [추가 예정] 월별/요일별 관객 트렌드 분석")
+    st.header("4. 기간 내 일관객 합계 Top 10 영화 (가로 막대그래프)")
+    st.caption("1년 동안 일관객 합계가 가장 높은 Top 10 영화를 가로 막대그래프로 비교합니다.")
+
+    # 영화별 일관객 합계 및 10위권 진입 일수 계산
+    top10_bar = df.groupby('영화명').agg(
+        총일관객=('일관객', 'sum'),
+        진입일수=('날짜', 'nunique')
+    ).reset_index()
+
+    # 상위 10개 추출 및 관객수가 많은 영화가 위로 오도록 정렬
+    top10_bar = top10_bar.nlargest(10, '총일관객').sort_values('총일관객', ascending=True)
+
+    if not top10_bar.empty:
+        fig4 = px.bar(
+            top10_bar,
+            x='총일관객',
+            y='영화명',
+            orientation='h',
+            title="<b>[Top 10 영화]</b> 총 관객 수 및 10위권 차트인 일수",
+            labels={'총일관객': '일관객 합계(명)', '영화명': '영화 제목', '진입일수': '10위권 진입 일수'},
+            text='총일관객',
+            hover_data={'진입일수': True, '총일관객': ':,d'}
+        )
+
+        fig4.update_traces(
+            marker_color='#1f77b4',
+            texttemplate='%{x:,}명',
+            textposition='outside',
+            hovertemplate="<b>영화명:</b> %{y}<br><b>일관객 합계:</b> %{x:,}명<br><b>10위권 차트인:</b> %{customdata[0]}일<extra></extra>"
+        )
+
+        fig4.update_layout(
+            xaxis_title="일관객 합계 (명)",
+            yaxis_title="영화 제목",
+            margin=dict(l=20, r=50, t=50, b=20),
+            template="plotly_white",
+            height=500
+        )
+
+        st.plotly_chart(fig4, use_container_width=True)
+
+        top1_movie = top10_bar.iloc[-1]
+        st.info(f"💡 **이 그래프로 알 수 있는 것:** 해당 기간 동안 가장 많은 관객을 동원한 최고 흥행작은 '{top1_movie['영화명']}'({top1_movie['총일관객']:,}명, 차트인 {top10_bar.iloc[-1]['진입일수']}일)이며, 영화별 흥행 규모와 Box Office 10위권 내 생존 기간(차트인 일수)의 관계를 파악할 수 있습니다.")
+    else:
+        st.warning("Top 10 막대그래프 데이터를 생성할 수 없습니다.")
+
+    # ---------------------------------------------------------
+    # 구역 5: (추가 예정 구역 예시)
+    # ---------------------------------------------------------
+    st.divider()
+    st.header("5. [추가 예정] 월별/요일별 관객 트렌드 분석")
     st.container().write("🔒 *이 구역에는 시간의 흐름에 따른 추가 분석 그래프가 추가될 예정입니다.*")
 
 except Exception as e:
