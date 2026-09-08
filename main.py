@@ -243,11 +243,66 @@ try:
         st.warning("Top 10 막대그래프 데이터를 생성할 수 없습니다.")
 
     # ---------------------------------------------------------
-    # 구역 5: (추가 예정 구역 예시)
+    # 구역 5: 월 × 요일별 일관객 합계 (히트맵)
     # ---------------------------------------------------------
     st.divider()
-    st.header("5. [추가 예정] 월별/요일별 관객 트렌드 분석")
-    st.container().write("🔒 *이 구역에는 시간의 흐름에 따른 추가 분석 그래프가 추가될 예정입니다.*")
+    st.header("5. 월 × 요일별 일관객 합계 (히트맵)")
+    st.caption("월별 및 요일별 관객 수 분포를 히트맵으로 시각화하여 시즌별/요일별 극장가 관객 집중도를 분석합니다.")
+
+    # 월 및 요일 파생변수 생성
+    heatmap_df = df.copy()
+    heatmap_df['월'] = heatmap_df['날짜'].dt.month.astype(str) + "월"
+    
+    # 요일 한글 및 순서 정의 (월요일 ~ 일요일)
+    weekday_order = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
+    weekday_map = {0: '월요일', 1: '화요일', 2: '수요일', 3: '목요일', 4: '금요일', 5: '토요일', 6: '일요일'}
+    heatmap_df['요일'] = heatmap_df['날짜'].dt.weekday.map(weekday_map)
+
+    # 월별 순서 정렬을 위한 리스트 (1월 ~ 12월)
+    month_order = [f"{i}월" for i in range(1, 13)]
+
+    # 월 x 요일 피벗 테이블 작성
+    pivot_df = heatmap_df.pivot_table(
+        index='월',
+        columns='요일',
+        values='일관객',
+        aggfunc='sum'
+    )
+
+    # 존재하지 않는 월/요일 보장 및 순서 재정렬
+    pivot_df = pivot_df.reindex(index=month_order, columns=weekday_order).fillna(0)
+
+    if not pivot_df.empty:
+        fig5 = px.imshow(
+            pivot_df,
+            labels=dict(x="요일", y="월", color="일관객 합계(명)"),
+            x=weekday_order,
+            y=month_order,
+            color_continuous_scale="Reds",  # 관객이 많을수록 붉고 진해짐
+            title="<b>[월 × 요일]</b> 일관객 합계 히트맵"
+        )
+
+        fig5.update_traces(
+            hovertemplate="<b>%{y} %{x}</b><br>일관객 합계: %{z:,}명<extra></extra>"
+        )
+
+        fig5.update_layout(
+            xaxis_title="요일",
+            yaxis_title="월",
+            margin=dict(l=20, r=20, t=50, b=20),
+            template="plotly_white",
+            height=550
+        )
+
+        st.plotly_chart(fig5, use_container_width=True)
+
+        # 가장 관객 수가 많은 월x요일 지점 계산
+        max_val = pivot_df.values.max()
+        max_idx = pivot_df.stack().idxmax()
+        
+        st.info(f"💡 **이 그래프로 알 수 있는 것:** 1년 중 관객 집중도가 가장 높았던 시점은 **{max_idx[0]} {max_idx[1]}** (총 {int(max_val):,}명)입니다. 주말(토/일)과 평일의 관객 수 격차 및 계절별(여름/겨울 성수기 vs 비수기) 요일별 관객 유입 특징을 파악할 수 있습니다.")
+    else:
+        st.warning("히트맵 데이터를 생성할 수 없습니다.")
 
 except Exception as e:
     st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
