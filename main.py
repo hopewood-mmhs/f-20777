@@ -142,15 +142,41 @@ if 'df' in st.session_state and st.session_state['df'] is not None:
         st.info("🎉 모든 날짜(365일)의 데이터를 성공적으로 가져왔습니다!")
 
     # ---------------------------------------------------------------
-    # [5] 팝업(다이얼로그) 형태의 데이터프레임 확인 버튼
+    # [5] 팝업(다이얼로그) 형태의 데이터프레임 확인 및 CSV 다운로드 버튼
     # ---------------------------------------------------------------
+    # 판다스 데이터프레임을 CSV 바이너리 데이터로 변환하는 함수입니다.
+    # index=False: 맨 앞의 행 번호(0, 1, 2...)는 저장하지 않습니다.
+    # encoding='utf-8-sig': 엑셀에서 파일/한글을 열었을 때 깨지지 않도록 해줍니다.
+    csv_data = df.to_csv(index=False).encode('utf-8-sig')
+
     @st.dialog("📋 1년치 전체 박스오피스 데이터", width="large")
     def show_data_dialog():
         st.write("문자열 숫자가 모두 실제 숫자형(Int/Float)으로 정제된 데이터입니다.")
+        
+        # 팝업 창 안에 CSV 다운로드 버튼 배치
+        st.download_button(
+            label="📥 CSV 파일로 다운로드받기",
+            data=csv_data,
+            file_name="kobis_1year_boxoffice.csv",
+            mime="text/csv"
+        )
+        
         st.dataframe(df, use_container_width=True)
 
-    if st.button("🔍 데이터프레임 새 창(팝업)으로 보기"):
-        show_data_dialog()
+    # 팝업 열기 버튼 및 화면 메인 다운로드 버튼
+    col_btn1, col_btn2 = st.columns([1, 4])
+    with col_btn1:
+        if st.button("🔍 데이터 팝업으로 보기"):
+            show_data_dialog()
+            
+    with col_btn2:
+        # 팝업을 열지 않고 메인 화면에서도 바로 다운로드받을 수 있게 추가
+        st.download_button(
+            label="💾 CSV 바로 다운로드",
+            data=csv_data,
+            file_name="kobis_1year_boxoffice.csv",
+            mime="text/csv"
+        )
 
 # -------------------------------------------------------------------
 # [6] 그래프 자리(틀) 미리 만들어두기 (그래프 1 ~ 그래프 5)
