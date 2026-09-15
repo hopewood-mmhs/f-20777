@@ -134,3 +134,46 @@ with st.container():
     )
 
 st.markdown("---")
+
+# ----------------------------------------------------
+# 4번 그래프: 개봉일 스크린수 vs 총 관객수 (산점도)
+# ----------------------------------------------------
+st.subheader("4. 개봉일 스크린 수와 총 관객 수의 관계")
+
+# Plotly 산점도 생성
+fig4 = px.scatter(
+    df,
+    x="first_scrn",
+    y="total_audi",
+    color="genre",
+    hover_name="movieNm",
+    title="개봉일 스크린 수 vs 총 관객 수",
+    labels={
+        "first_scrn": "개봉일 스크린 수",
+        "total_audi": "총 관객 수",
+        "genre": "장르",
+    },
+)
+
+# 마우스 오버 시 정보 레이아웃 설정
+fig4.update_traces(
+    hovertemplate="<b>%{hovertext}</b><br>개봉일 스크린 수: %{x:,.0f}개<br>총 관객 수: %{y:,.0f}명"
+)
+
+fig4.update_layout(
+    xaxis_title="개봉일 스크린 수 (개)",
+    yaxis_title="총 관객 수 (명)",
+)
+
+# 그래프 출력
+st.plotly_chart(fig4, use_container_width=True)
+
+# 그래프 해석 구역
+with st.container():
+    st.markdown("**💡 이 그래프로 알 수 있는 것**")
+    st.info(
+        "개봉일 스크린 수가 많을수록 대체로 총 관객 수가 증가하는 양의 상관관계를 보이나, "
+        "초기 스크린 수 대비 극단적으로 높거나 낮은 성과를 낸 아웃라이어 영화들도 함께 확인할 수 있습니다."
+    )
+
+st.markdown("---")
