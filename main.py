@@ -47,7 +47,8 @@ fig1 = px.pie(
 
 # 마우스 오버 시 편수와 비율이 보이도록 설정
 fig1.update_traces(
-    textinfo="percent+label", hovertemplate="<b>장르</b>: %{label}<br><b>영화 편수</b>: %{value}편<br><b>비율</b>: %{percent}"
+    textinfo="percent+label",
+    hovertemplate="<b>장르</b>: %{label}<br><b>영화 편수</b>: %{value}편<br><b>비율</b>: %{percent}",
 )
 
 # 그래프 출력
@@ -58,6 +59,37 @@ with st.container():
     st.markdown("**💡 이 그래프로 알 수 있는 것**")
     st.info(
         "박스오피스 상위권 영화 중 어떤 장르가 가장 큰 비중을 차지하는지, 시장의 장르 쏠림 현상을 한눈에 파악할 수 있습니다."
+    )
+
+st.markdown("---")
+
+# ----------------------------------------------------
+# 2번 그래프: 장르 및 영화별 총 관객수 (트리맵)
+# ----------------------------------------------------
+st.subheader("2. 장르 및 개별 영화의 총 관객 수 분포")
+
+# Plotly 트리맵 생성 (장르 -> 영화명 계층 구조)
+fig2 = px.treemap(
+    df,
+    path=[px.Constant("전체 장르"), "genre", "movieNm"],
+    values="total_audi",
+    color="genre",
+    title="장르 및 영화별 총 관객수 분포 (칸 크기 = 총 관객 수)",
+)
+
+# 마우스 오버(Hover) 시 영화명과 총 관객수가 표시되도록 설정
+fig2.update_traces(
+    hovertemplate="<b>영화명/카테고리</b>: %{label}<br><b>총 관객 수</b>: %{value:,.0f}명"
+)
+
+# 그래프 출력
+st.plotly_chart(fig2, use_container_width=True)
+
+# 그래프 해석 구역
+with st.container():
+    st.markdown("**💡 이 그래프로 알 수 있는 것**")
+    st.info(
+        "각 장르의 전체 흥행 규모뿐만 아니라 특정 장르 내에서 어떤 영화가 총 관객 수를 주도했는지 직관적으로 비교할 수 있습니다."
     )
 
 st.markdown("---")
