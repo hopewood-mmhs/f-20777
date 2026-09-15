@@ -93,3 +93,44 @@ with st.container():
     )
 
 st.markdown("---")
+
+# ----------------------------------------------------
+# 3번 그래프: 총 관객 수 분포 (히스토그램)
+# ----------------------------------------------------
+st.subheader("3. 영화별 총 관객 수 분포")
+
+# Plotly 히스토그램 생성
+fig3 = px.histogram(
+    df,
+    x="total_audi",
+    nbins=25,
+    title="총 관객 수 히스토그램",
+    labels={"total_audi": "총 관객 수"},
+)
+
+fig3.update_traces(
+    hovertemplate="<b>관객 수 구간</b>: %{x:,.0f}명<br><b>영화 수</b>: %{y}편"
+)
+
+fig3.update_layout(
+    xaxis_title="총 관객 수 (명)",
+    yaxis_title="영화 수 (편)",
+)
+
+# 그래프 출력
+st.plotly_chart(fig3, use_container_width=True)
+
+# 데이터 기반 최다 관객 영화 자동 추출
+top_movie = df.loc[df["total_audi"].idxmax()]
+top_movie_name = top_movie["movieNm"]
+top_movie_audi = top_movie["total_audi"]
+
+# 그래프 해석 구역
+with st.container():
+    st.markdown("**💡 이 그래프로 알 수 있는 것**")
+    st.info(
+        f"대부분의 영화는 초반 저관객 구간(약 100만~300만 명 이하)에 빽빽하게 몰려 있으며, "
+        f"가장 관객이 많은 영화는 **'{top_movie_name}'**(총 {top_movie_audi:,.0f}명)입니다."
+    )
+
+st.markdown("---")
