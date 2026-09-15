@@ -223,3 +223,49 @@ with st.container():
     )
 
 st.markdown("---")
+
+# ----------------------------------------------------
+# 6번 그래프: 개봉일 스크린수 vs 총 관객수 (버블 차트 - 첫 주 관객수 크기)
+# ----------------------------------------------------
+st.subheader("6. 개봉일 스크린 수 vs 총 관객 수 (첫 주 관객 수 버블 차트)")
+
+# Plotly 버블 차트 생성
+fig6 = px.scatter(
+    df,
+    x="first_scrn",
+    y="total_audi",
+    size="first_week_audi",
+    color="genre",
+    hover_name="movieNm",
+    size_max=40,
+    title="개봉일 스크린 수 vs 총 관객 수 (버블 크기 = 개봉 첫 주 관객 수)",
+    labels={
+        "first_scrn": "개봉일 스크린 수",
+        "total_audi": "총 관객 수",
+        "first_week_audi": "개봉 첫 주 관객 수",
+        "genre": "장르",
+    },
+)
+
+# 마우스 오버 시 정보 레이아웃 설정
+fig6.update_traces(
+    hovertemplate="<b>%{hovertext}</b><br>개봉일 스크린 수: %{x:,.0f}개<br>총 관객 수: %{y:,.0f}명<br>개봉 첫 주 관객 수: %{marker.size:,.0f}명"
+)
+
+fig6.update_layout(
+    xaxis_title="개봉일 스크린 수 (개)",
+    yaxis_title="총 관객 수 (명)",
+)
+
+# 그래프 출력
+st.plotly_chart(fig6, use_container_width=True)
+
+# 그래프 해석 구역
+with st.container():
+    st.markdown("**💡 이 그래프로 알 수 있는 것**")
+    st.info(
+        "버블의 크기를 통해 개봉 초기의 폭발적인 관객 동원력을 시각적으로 함께 비교할 수 있습니다. "
+        "예를 들어 초기 스크린 수는 적었지만 버블이 큰 영화는 입소문을 통해 초반 흥행에 성공했음을 알 수 있습니다."
+    )
+
+st.markdown("---")
