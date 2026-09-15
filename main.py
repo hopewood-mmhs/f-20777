@@ -305,3 +305,63 @@ with st.container():
     )
 
 st.markdown("---")
+
+# ----------------------------------------------------
+# 8번 그래프: 제작 국가별 흥행 패턴 (초반 집중도 박스플롯)
+# ----------------------------------------------------
+st.subheader("8. 제작 국가(한국 vs 외국)별 흥행 패턴 비교")
+
+# 데이터 전처리: 초반 관객 비중(%) 파생변수 생성 및 국가 그룹화
+df_pattern = df.copy()
+
+# 총 관객이 0명 이상인 데이터만 대상
+df_pattern = df_pattern[df_pattern["total_audi"] > 0]
+
+# 초반 흥행 집중도(%) = (개봉 첫 주 관객 / 총 관객) * 100
+df_pattern["first_week_ratio"] = (
+    df_pattern["first_week_audi"] / df_pattern["total_audi"]
+) * 100
+
+# 국가 단순화: '한국' vs '외국'
+df_pattern["nation_group"] = df_pattern["nation"].apply(
+    lambda x: "한국" if x == "한국" else "외국"
+)
+
+# Plotly 박스플롯 생성 (배운 박스플롯 방식 활용)
+fig8 = px.box(
+    df_pattern,
+    x="nation_group",
+    y="first_week_ratio",
+    color="nation_group",
+    hover_name="movieNm",
+    points="all",  # 모든 영화 데이터를 점으로 함께 표시
+    title="제작 국가별 개봉 첫 주 관객 비중 (%) 분포",
+    labels={
+        "nation_group": "제작 국가 구분",
+        "first_week_ratio": "첫 주 관객 비중 (%)",
+    },
+)
+
+# 마우스 오버 시 영화명과 비율 표시
+fig8.update_traces(
+    hovertemplate="<b>%{hovertext}</b><br>첫 주 관객 비중: %{y:.1f}%"
+)
+
+fig8.update_layout(
+    xaxis_title="제작 국가 구분",
+    yaxis_title="첫 주 관객 비중 (%) = (첫 주 관객 / 총 관객)",
+    showlegend=False,
+)
+
+# 그래프 출력
+st.plotly_chart(fig8, use_container_width=True)
+
+# 그래프 해석 구역
+with st.container():
+    st.markdown("**💡 이 그래프로 알 수 있는 것**")
+    st.info(
+        "상자의 중앙값(선)이 더 높은 국가 집단일수록 개봉 초기에 관객이 쏠리는 '초반 스퍼트형' 성향이 강함을 뜻합니다. "
+        "반대로 비중이 낮고 넓게 분포할수록 입소문 등을 통해 장기 흥행을 이어가는 '롱런형' 영화가 상대적으로 더 많이 포함되어 있음을 알 수 있습니다."
+    )
+
+st.markdown("---")
